@@ -6,7 +6,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from airSpace import AirSpace, LoadAirspaceFromFiles
 from navPoint import HaversineDistance
 
-from project.node import Distance
+from node import Distance
 
 
 class GraphApp:
@@ -103,7 +103,10 @@ class GraphApp:
         self.ax.set_facecolor('#F0F8FF')  # Azul claro muy tenue
         self.figure.patch.set_facecolor('white')
 
-        # Dibujar segmentos primero (en azul aeronáutico)
+        # Ajustar márgenes para mejor visualización
+        self.figure.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.05)
+
+        # Dibujar segmentos primero (en azul aeronáutico con transparencia)
         for seg in self.current_airspace.nav_segments:
             origin = self.current_airspace.find_navpoint_by_number(seg.origin_number)
             destination = self.current_airspace.find_navpoint_by_number(seg.destination_number)
@@ -111,30 +114,35 @@ class GraphApp:
             if origin and destination:
                 self.ax.plot([origin.longitude, destination.longitude],
                              [origin.latitude, destination.latitude],
-                             color='#1E90FF', linewidth=0.8, alpha=0.7)
+                             color='#1E90FF', linewidth=0.8, alpha=0.5)
 
-        # Dibujar puntos de navegación (en verde aeronáutico)
+        # Dibujar puntos de navegación (tamaño según importancia)
         for point in self.current_airspace.nav_points:
+            # Determinar tamaño según si es punto importante (con muchos vecinos)
+            size = 8 if len(point.neighbors) < 3 else 12 if len(point.neighbors) < 5 else 16
+
             self.ax.plot(point.longitude, point.latitude, 'o',
-                         markersize=5,
+                         markersize=size,
                          markerfacecolor='#32CD32',
                          markeredgecolor='#006400',
-                         markeredgewidth=0.5)
+                         markeredgewidth=0.5,
+                         picker=5)  # Permite selección con ratón
 
-            # Mostrar nombre del punto (solo si hay espacio)
-            text_offset = 0.02  # Ajuste para evitar solapamiento
-            self.ax.text(point.longitude + text_offset,
-                         point.latitude + text_offset,
-                         point.name,
-                         fontsize=7,
-                         color='#006400',
-                         bbox=dict(facecolor='white',
-                                   edgecolor='none',
-                                   alpha=0.7,
-                                   boxstyle='round,pad=0.2'))
+            # Mostrar nombre solo de puntos importantes para evitar saturación
+            if len(point.neighbors) > 0:
+                text_offset = 0.02  # Ajuste para evitar solapamiento
+                self.ax.text(point.longitude + text_offset,
+                             point.latitude + text_offset,
+                             point.name,
+                             fontsize=7,
+                             color='#006400',
+                             bbox=dict(facecolor='white',
+                                       edgecolor='none',
+                                       alpha=0.7,
+                                       boxstyle='round,pad=0.2'))
 
-        # Dibujar aeropuertos (iconos especiales)
-        airport_icon = dict(marker='*', markersize=10, color='#FF4500')
+        # Dibujar aeropuertos (iconos especiales más grandes)
+        airport_icon = dict(marker='*', markersize=15, color='#FF4500', linestyle='none')
         for airport in self.current_airspace.nav_airports:
             if airport.sids:
                 first_sid = self.current_airspace.find_navpoint_by_number(airport.sids[0])
@@ -144,7 +152,7 @@ class GraphApp:
                     self.ax.text(first_sid.longitude,
                                  first_sid.latitude + 0.05,  # Offset vertical
                                  airport.name,
-                                 fontsize=8,
+                                 fontsize=9,
                                  ha='center',
                                  color='#8B0000',
                                  fontweight='bold',
@@ -159,7 +167,87 @@ class GraphApp:
                           pad=15,
                           fontweight='bold')
 
+        # Configurar eventos para zoom y selección
+        self.setup_interaction()
+
         self.canvas.draw()
+
+    def setup_interaction(self):
+        # Conectar eventos
+        self.canvas.mpl_connect('scroll_event', self.on_scroll)
+        self.canvas.mpl_connect('pick_event', self.on_pick)
+
+        # Añadir botones de zoom
+        zoom_frame = tk.Frame(self.control_frame)
+        zoom_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=5)
+
+        tk.Button(zoom_frame, text="Zoom In", command=lambda: self.zoom(1.2)).pack(side=tk.LEFT, expand=True)
+        tk.Button(zoom_frame, text="Zoom Out", command=lambda: self.zoom(0.8)).pack(side=tk.LEFT, expand=True)
+        tk.Button(zoom_frame, text="Reset View", command=self.reset_view).pack(side=tk.LEFT, expand=True)
+
+        # Guardar límites iniciales
+        self.initial_xlim = self.ax.get_xlim()
+        self.initial_ylim = self.ax.get_ylim()
+
+    def zoom(self, factor):
+        # Obtener límites actuales
+        xlim = self.ax.get_xlim()
+        ylim = self.ax.get_ylim()
+
+        # Calcular nuevos límites
+        x_center = (xlim[0] + xlim[1]) / 2
+        y_center = (ylim[0] + ylim[1]) / 2
+        x_width = (xlim[1] - xlim[0]) * factor
+        y_height = (ylim[1] - ylim[0]) * factor
+
+        # Aplicar zoom manteniendo el centro
+        self.ax.set_xlim(x_center - x_width / 2, x_center + x_width / 2)
+        self.ax.set_ylim(y_center - y_height / 2, y_center + y_height / 2)
+
+        self.canvas.draw()
+
+    def reset_view(self):
+        self.ax.set_xlim(self.initial_xlim)
+        self.ax.set_ylim(self.initial_ylim)
+        self.canvas.draw()
+
+    def on_scroll(self, event):
+        # Zoom con rueda del ratón
+        if event.inaxes == self.ax:
+            factor = 1.2 if event.button == 'up' else 0.8
+            self.zoom(factor)
+
+    def on_pick(self, event):
+        # Selección de nodo con clic
+        if isinstance(event.artist, plt.Line2D):
+            point = event.artist
+            x, y = point.get_xdata()[0], point.get_ydata()[0]
+
+            # Buscar el punto de navegación correspondiente
+            for nav_point in self.current_airspace.nav_points:
+                if (abs(nav_point.longitude - x) < 0.01 and
+                        abs(nav_point.latitude - y) < 0.01):
+
+                    # Mostrar información en un tooltip
+                    tooltip = f"NavPoint: {nav_point.name}\n"
+                    tooltip += f"Coordinates: {nav_point.latitude:.4f}°, {nav_point.longitude:.4f}°\n"
+                    tooltip += f"Neighbors: {len(nav_point.neighbors)}"
+
+                    # Crear anotación
+                    if hasattr(self, 'current_tooltip'):
+                        self.current_tooltip.remove()
+
+                    self.current_tooltip = self.ax.annotate(
+                        tooltip,
+                        xy=(x, y),
+                        xytext=(10, 10),
+                        textcoords='offset points',
+                        bbox=dict(boxstyle='round,pad=0.5', fc='white', alpha=0.9),
+                        arrowprops=dict(arrowstyle='->')
+                    )
+
+                    self.canvas.draw()
+                    break
 
     def clear_graph_display(self):
         self.ax.clear()
