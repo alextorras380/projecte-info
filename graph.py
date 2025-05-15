@@ -3,6 +3,9 @@ from node import Node
 from segment import Segment
 
 
+
+
+
 class Graph:
     def __init__(self):
         self.nodes = []
@@ -125,9 +128,6 @@ def PlotNode(g, nameOrigin):
     plt.title(f"Neighbors of Node {nameOrigin}")
     plt.show()
     return True
-
-
-# Añadir esto al final de graph.py (antes de las funciones de carga/guardado)
 
 def CreateGraph_1():
     G = Graph()
@@ -282,5 +282,26 @@ def FindShortestPath(g, origin_name, destination_name):
                     new_path = AddNodeToPath(current_path, neighbor, segment.cost)
                     open_paths.append(new_path)
 
+    import matplotlib.pyplot as plt
+    from path import Segment
+
+    class Graph:
+        def __init__(self):
+            self.segments = []
+
+        def add_segment(self, segment):
+            self.segments.append(segment)
+
+        def plot(self):
+            for seg in self.segments:
+                x = [seg.start[0], seg.end[0]]
+                y = [seg.start[1], seg.end[1]]
+                plt.plot(x, y, color=seg.color)
+            plt.xlabel('X')
+            plt.ylabel('Y')
+            plt.title('Graph Plot')
+            plt.grid(True)
+            plt.axis('equal')
+            plt.show()
 
     return None  # No se encontró camino

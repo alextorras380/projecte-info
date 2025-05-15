@@ -1,3 +1,9 @@
+#import matplotlib as plt
+
+
+
+
+
 class Path:
     def __init__(self, nodes=None, cost=0):
         self.nodes = nodes if nodes is not None else []

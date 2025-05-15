@@ -1,6 +1,10 @@
 from path import *
 from node import Node
 
+
+
+
+
 # Crear nodos de prueba
 n1 = Node("A", 0, 0)
 n2 = Node("B", 3, 4)
@@ -25,3 +29,5 @@ print(ContainsNode(path, n3))  # False
 print("\n=== Testing CostToNode ===")
 print(CostToNode(path, n1))  # 5.0 (simplificado)
 print(CostToNode(path, n3))  # -1
+
+
