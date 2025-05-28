@@ -1,5 +1,5 @@
-F=open("Esp_seg.txt", "r")
-G=open("Esp_seg.txt", "w")
+F=open("Eur_seg.txt", "r")
+G=open("Eur_seg.txt", "w")
 for line in F:
     parts = line.strip().split()
     if len(parts) == 3:

@@ -72,6 +72,8 @@ class GraphApp:
                   command=self.load_catalunya_airspace).pack(fill=tk.X, pady=2)
         tk.Button(self.control_frame, text="Load Spain Airspace",
                   command=self.load_spain_airspace).pack(fill=tk.X, pady=2)
+        tk.Button(self.control_frame, text="Load Europe Airspace",
+                  command=self.load_europe_airspace).pack(fill=tk.X, pady=2)
 
         tk.Button(self.control_frame, text="Generate KML for Airspace",
                   command=self.generate_airspace_kml).pack(fill=tk.X, pady=2)
@@ -132,12 +134,45 @@ class GraphApp:
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load airspace: {str(e)}")
 
+    def load_europe_airspace(self):
+        self.current_airspace = AirSpace()
+        try:
+            # Verificar que los archivos existen antes de intentar cargarlos
+            required_files = ["Eur_nav.txt", "Eur_seg.txt", "Eur_aer.txt"]
+            for file in required_files:
+                if not os.path.exists(file):
+                    raise FileNotFoundError(f"El archivo {file} no se encuentra en el directorio actual")
+
+            LoadAirspaceFromFiles(self.current_airspace, "Eur_nav.txt", "Eur_seg.txt", "Eur_aer.txt")
+            self.plot_airspace()
+            messagebox.showinfo("Success", "Europe airspace loaded successfully")
+        except FileNotFoundError as e:
+            messagebox.showerror("Error",
+                                 f"No se encontraron los archivos necesarios: {str(e)}\n\nAsegúrate de que los archivos Eur_nav.txt, Eur_seg.txt y Eur_aer.txt estén en el mismo directorio que el programa.")
+        except IndexError as e:
+            messagebox.showerror("Error",
+                                 f"Error en el formato de los archivos: {str(e)}\n\nAlguna línea en los archivos no tiene el formato esperado.")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to load airspace: {str(e)}")
+
     def load_spain_airspace(self):
         self.current_airspace = AirSpace()
         try:
+            # Verificar que los archivos existen antes de intentar cargarlos
+            required_files = ["Esp_nav.txt", "Esp_seg.txt", "Esp_aer.txt"]
+            for file in required_files:
+                if not os.path.exists(file):
+                    raise FileNotFoundError(f"El archivo {file} no se encuentra en el directorio actual")
+
             LoadAirspaceFromFiles(self.current_airspace, "Esp_nav.txt", "Esp_seg.txt", "Esp_aer.txt")
             self.plot_airspace()
             messagebox.showinfo("Success", "Spain airspace loaded successfully")
+        except FileNotFoundError as e:
+            messagebox.showerror("Error",
+                                 f"No se encontraron los archivos necesarios: {str(e)}\n\nAsegúrate de que los archivos Esp_nav.txt, Esp_seg.txt y Esp_aer.txt estén en el mismo directorio que el programa.")
+        except IndexError as e:
+            messagebox.showerror("Error",
+                                 f"Error en el formato de los archivos: {str(e)}\n\nAlguna línea en los archivos no tiene el formato esperado.")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load airspace: {str(e)}")
 
