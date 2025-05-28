@@ -8,6 +8,20 @@ from navPoint import HaversineDistance
 
 from node import Distance
 
+import os
+import platform
+import subprocess
+
+def obrir_google_earth(kml_path):
+    try:
+        if platform.system() == 'Windows':
+            os.startfile(kml_path)
+        elif platform.system() == 'Darwin':  # macOS
+            subprocess.call(['open', kml_path])
+        elif platform.system() == 'Linux':
+            subprocess.call(['xdg-open', kml_path])
+    except Exception as e:
+        print(f"Error obrint Google Earth: {e}")
 
 class GraphApp:
     def __init__(self, root):
@@ -15,6 +29,9 @@ class GraphApp:
         self.root.title("Graph Explorer - Version 1")
         self.current_graph = None
         self.current_airspace = None
+
+        self.restricted_nodes = set()  # Para nodos restringidos (por nombre o número)
+        self.restricted_segments = set()  # Para segmentos restringidos (formato "origen-destino")
 
         # Frame principal
         self.main_frame = tk.Frame(root)
@@ -27,6 +44,8 @@ class GraphApp:
         # Frame para el gráfico
         self.graph_frame = tk.Frame(self.main_frame)
         self.graph_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+
 
         # Botones
         tk.Button(self.control_frame, text="Show Example Graph 1",
@@ -56,6 +75,16 @@ class GraphApp:
         tk.Button(self.control_frame, text="Load Europe Airspace",
                   command=self.load_europe_airspace).pack(fill=tk.X, pady=2)
 
+        tk.Button(self.control_frame, text="Generate KML for Airspace",
+                  command=self.generate_airspace_kml).pack(fill=tk.X, pady=2)
+        tk.Button(self.control_frame, text="Generate KML for Path",
+                  command=self.generate_path_kml).pack(fill=tk.X, pady=2)
+        tk.Button(self.control_frame, text="Add Restrictions",
+                  command=self.add_restrictions_dialog).pack(fill=tk.X, pady=2)
+        tk.Button(self.control_frame, text="Compare Algorithms",
+                  command=self.compare_algorithms).pack(fill=tk.X, pady=2)
+
+
 
 
         # Área para mostrar el gráfico
@@ -66,6 +95,36 @@ class GraphApp:
         # Estado inicial
         self.clear_graph_display()
 
+        self.add_version4_features()
+
+    def add_version4_features(self):
+        # Menú superior
+        menubar = tk.Menu(self.root)
+        file_menu = tk.Menu(menubar, tearoff=0)
+        file_menu.add_command(label="Exportar KML", command=self.export_to_kml)
+        menubar.add_cascade(label="Herramientas", menu=file_menu)
+        self.root.config(menu=menubar)
+
+        # Panel de estado
+        self.status_bar = tk.Label(self.root, text="Versión 4 - Listo", bd=1, relief=tk.SUNKEN, anchor=tk.W)
+        self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
+
+    def export_to_kml(self):
+        if not self.current_graph:
+            messagebox.showerror("Error", "No hay grafo para exportar")
+            return
+        filename = filedialog.asksaveasfilename(defaultextension=".kml")
+        if filename:
+            # Implementar lógica de exportación (ejemplo simplificado)
+            with open(filename, 'w') as f:
+                f.write(
+                    '<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2">\n<Document>\n')
+                for node in self.current_graph.nodes:
+                    f.write(
+                        f'<Placemark><name>{node.name}</name><Point><coordinates>{node.x},{node.y},0</coordinates></Point></Placemark>\n')
+                f.write('</Document>\n</kml>')
+            self.status_bar.config(text=f"KML exportado a {filename}")
+
     def load_catalunya_airspace(self):
         self.current_airspace = AirSpace()
         try:
@@ -75,12 +134,45 @@ class GraphApp:
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load airspace: {str(e)}")
 
+    def load_europe_airspace(self):
+        self.current_airspace = AirSpace()
+        try:
+            # Verificar que los archivos existen antes de intentar cargarlos
+            required_files = ["Eur_nav.txt", "Eur_seg.txt", "Eur_aer.txt"]
+            for file in required_files:
+                if not os.path.exists(file):
+                    raise FileNotFoundError(f"El archivo {file} no se encuentra en el directorio actual")
+
+            LoadAirspaceFromFiles(self.current_airspace, "Eur_nav.txt", "Eur_seg.txt", "Eur_aer.txt")
+            self.plot_airspace()
+            messagebox.showinfo("Success", "Europe airspace loaded successfully")
+        except FileNotFoundError as e:
+            messagebox.showerror("Error",
+                                 f"No se encontraron los archivos necesarios: {str(e)}\n\nAsegúrate de que los archivos Eur_nav.txt, Eur_seg.txt y Eur_aer.txt estén en el mismo directorio que el programa.")
+        except IndexError as e:
+            messagebox.showerror("Error",
+                                 f"Error en el formato de los archivos: {str(e)}\n\nAlguna línea en los archivos no tiene el formato esperado.")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to load airspace: {str(e)}")
+
     def load_spain_airspace(self):
         self.current_airspace = AirSpace()
         try:
+            # Verificar que los archivos existen antes de intentar cargarlos
+            required_files = ["Esp_nav.txt", "Esp_seg.txt", "Esp_aer.txt"]
+            for file in required_files:
+                if not os.path.exists(file):
+                    raise FileNotFoundError(f"El archivo {file} no se encuentra en el directorio actual")
+
             LoadAirspaceFromFiles(self.current_airspace, "Esp_nav.txt", "Esp_seg.txt", "Esp_aer.txt")
             self.plot_airspace()
             messagebox.showinfo("Success", "Spain airspace loaded successfully")
+        except FileNotFoundError as e:
+            messagebox.showerror("Error",
+                                 f"No se encontraron los archivos necesarios: {str(e)}\n\nAsegúrate de que los archivos Esp_nav.txt, Esp_seg.txt y Esp_aer.txt estén en el mismo directorio que el programa.")
+        except IndexError as e:
+            messagebox.showerror("Error",
+                                 f"Error en el formato de los archivos: {str(e)}\n\nAlguna línea en los archivos no tiene el formato esperado.")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load airspace: {str(e)}")
 
@@ -648,6 +740,411 @@ class GraphApp:
         self.ax.set_title(f"Shortest Path from {path.nodes[0].name} to {path.nodes[-1].name}",
                           fontsize=12, pad=15)
         self.canvas.draw()
+
+    def generate_airspace_kml(self):
+        if not self.current_airspace:
+            messagebox.showwarning("Warning", "No airspace loaded")
+            return
+
+        filename = filedialog.asksaveasfilename(
+            title="Save KML File",
+            defaultextension=".kml",
+            filetypes=(("KML files", "*.kml"), ("All files", "*.*")))
+
+        if filename:
+            try:
+                self.create_airspace_kml(filename)
+                messagebox.showinfo("Success", f"KML file saved successfully: {filename}")
+                obrir_google_earth(filename)
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to generate KML: {str(e)}")
+
+    def create_airspace_kml(self, filename):
+        kml_content = """<?xml version="1.0" encoding="UTF-8"?>
+    <kml xmlns="http://www.opengis.net/kml/2.2">
+    <Document>
+        <name>Airspace Visualization</name>
+        <description>Generated by Graph Explorer</description>
+    """
+
+        # Add airports
+        for airport in self.current_airspace.nav_airports:
+            if airport.sids:
+                first_sid = self.current_airspace.find_navpoint_by_number(airport.sids[0])
+                if first_sid:
+                    kml_content += f"""
+        <Placemark>
+            <name>{airport.name}</name>
+            <description>Airport</description>
+            <styleUrl>#airportStyle</styleUrl>
+            <Point>
+                <coordinates>{first_sid.longitude},{first_sid.latitude},0</coordinates>
+            </Point>
+        </Placemark>
+    """
+
+        # Add navigation points
+        for point in self.current_airspace.nav_points:
+            is_restricted = point.name in self.restricted_nodes or point.number in self.restricted_nodes
+            style = "restrictedStyle" if is_restricted else "navpointStyle"
+
+            kml_content += f"""
+        <Placemark>
+            <name>{point.name}</name>
+            <description>NavPoint: {point.name}</description>
+            <styleUrl>#{style}</styleUrl>
+            <Point>
+                <coordinates>{point.longitude},{point.latitude},0</coordinates>
+            </Point>
+        </Placemark>
+    """
+
+        # Add segments
+        for seg in self.current_airspace.nav_segments:
+            origin = self.current_airspace.find_navpoint_by_number(seg.origin_number)
+            destination = self.current_airspace.find_navpoint_by_number(seg.destination_number)
+
+            if origin and destination:
+                is_restricted = (f"{origin.name}-{destination.name}" in self.restricted_segments or
+                                 f"{origin.number}-{destination.number}" in self.restricted_segments)
+                style = "restrictedSegmentStyle" if is_restricted else "segmentStyle"
+
+                kml_content += f"""
+        <Placemark>
+            <name>{origin.name} to {destination.name}</name>
+            <description>Distance: {seg.distance:.2f} km</description>
+            <styleUrl>#{style}</styleUrl>
+            <LineString>
+                <coordinates>
+                    {origin.longitude},{origin.latitude},0
+                    {destination.longitude},{destination.latitude},0
+                </coordinates>
+            </LineString>
+        </Placemark>
+    """
+
+        # Add styles
+        kml_content += """
+        <Style id="airportStyle">
+            <IconStyle>
+                <color>ff00aaff</color>
+                <scale>1.5</scale>
+                <Icon>
+                    <href>http://maps.google.com/mapfiles/kml/shapes/airports.png</href>
+                </Icon>
+            </IconStyle>
+        </Style>
+        <Style id="navpointStyle">
+            <IconStyle>
+                <color>ff00ff00</color>
+                <scale>0.7</scale>
+                <Icon>
+                    <href>http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png</href>
+                </Icon>
+            </IconStyle>
+        </Style>
+        <Style id="segmentStyle">
+            <LineStyle>
+                <color>ff0000ff</color>
+                <width>2</width>
+            </LineStyle>
+        </Style>
+        <Style id="restrictedStyle">
+            <IconStyle>
+                <color>ffff0000</color>
+                <scale>1.0</scale>
+                <Icon>
+                    <href>http://maps.google.com/mapfiles/kml/shapes/forbidden.png</href>
+                </Icon>
+            </IconStyle>
+        </Style>
+        <Style id="restrictedSegmentStyle">
+            <LineStyle>
+                <color>ff0000ff</color>
+                <width>2</width>
+            </LineStyle>
+            <PolyStyle>
+                <color>7f0000ff</color>
+            </PolyStyle>
+        </Style>
+    </Document>
+    </kml>
+    """
+
+        with open(filename, 'w') as f:
+            f.write(kml_content)
+
+    def generate_path_kml(self):
+        if not self.current_airspace:
+            messagebox.showwarning("Warning", "No airspace loaded")
+            return
+
+        origin_name = tk.simpledialog.askstring("Path KML", "Enter origin node name:")
+        if not origin_name:
+            return
+
+        destination_name = tk.simpledialog.askstring("Path KML", "Enter destination node name:")
+        if not destination_name:
+            return
+
+        path = FindShortestPathInAirspace(self.current_airspace, origin_name, destination_name)
+        if not path:
+            messagebox.showinfo("Info", "No path exists between these nodes")
+            return
+
+        filename = filedialog.asksaveasfilename(
+            title="Save Path KML File",
+            defaultextension=".kml",
+            filetypes=(("KML files", "*.kml"), ("All files", "*.*")))
+
+        if filename:
+            try:
+                self.create_path_kml(filename, path)
+                messagebox.showinfo("Success", f"Path KML file saved successfully: {filename}")
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to generate path KML: {str(e)}")
+
+    def create_path_kml(self, filename, path):
+        kml_content = """<?xml version="1.0" encoding="UTF-8"?>
+    <kml xmlns="http://www.opengis.net/kml/2.2">
+    <Document>
+        <name>Shortest Path</name>
+        <description>Generated by Graph Explorer</description>
+        <Style id="pathStyle">
+            <LineStyle>
+                <color>ff00ffff</color>
+                <width>4</width>
+            </LineStyle>
+        </Style>
+        <Style id="nodeStyle">
+            <IconStyle>
+                <color>ffffff00</color>
+                <scale>1.0</scale>
+                <Icon>
+                    <href>http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png</href>
+                </Icon>
+            </IconStyle>
+        </Style>
+    """
+
+        # Add path line
+        kml_content += """
+        <Placemark>
+            <name>Shortest Path</name>
+            <description>From {0} to {1}</description>
+            <styleUrl>#pathStyle</styleUrl>
+            <LineString>
+                <coordinates>
+    """.format(path.nodes[0].name, path.nodes[-1].name)
+
+        for node in path.nodes:
+            kml_content += f"                {node.longitude},{node.latitude},0\n"
+
+        kml_content += """            </coordinates>
+            </LineString>
+        </Placemark>
+    """
+
+        # Add path nodes
+        for i, node in enumerate(path.nodes):
+            kml_content += f"""
+        <Placemark>
+            <name>{node.name}</name>
+            <description>Node {i + 1} in path</description>
+            <styleUrl>#nodeStyle</styleUrl>
+            <Point>
+                <coordinates>{node.longitude},{node.latitude},0</coordinates>
+            </Point>
+        </Placemark>
+    """
+
+        kml_content += """
+    </Document>
+    </kml>
+    """
+
+        with open(filename, 'w') as f:
+            f.write(kml_content)
+
+    def add_restrictions_dialog(self):
+        if not self.current_airspace:
+            messagebox.showwarning("Warning", "No airspace loaded")
+            return
+
+        restriction_type = tk.simpledialog.askstring("Add Restrictions",
+                                                     "Add restriction for:\n1. Node by name\n2. Node by number\n3. Segment by names\n4. Segment by numbers\nEnter choice (1-4):")
+
+        if not restriction_type:
+            return
+
+        if restriction_type == "1":
+            node_name = tk.simpledialog.askstring("Add Restrictions", "Enter node name to restrict:")
+            if node_name:
+                self.restricted_nodes.add(node_name)
+                messagebox.showinfo("Success", f"Node {node_name} restricted")
+        elif restriction_type == "2":
+            node_number = tk.simpledialog.askstring("Add Restrictions", "Enter node number to restrict:")
+            if node_number:
+                self.restricted_nodes.add(int(node_number))
+                messagebox.showinfo("Success", f"Node {node_number} restricted")
+        elif restriction_type == "3":
+            segment_names = tk.simpledialog.askstring("Add Restrictions",
+                                                      "Enter segment to restrict (format: origin-destination):")
+            if segment_names:
+                self.restricted_segments.add(segment_names)
+                messagebox.showinfo("Success", f"Segment {segment_names} restricted")
+        elif restriction_type == "4":
+            segment_numbers = tk.simpledialog.askstring("Add Restrictions",
+                                                        "Enter segment to restrict (format: originNumber-destinationNumber):")
+            if segment_numbers:
+                self.restricted_segments.add(segment_numbers)
+                messagebox.showinfo("Success", f"Segment {segment_numbers} restricted")
+        else:
+            messagebox.showerror("Error", "Invalid choice")
+
+    def compare_algorithms(self):
+        if not self.current_airspace:
+            messagebox.showwarning("Warning", "No airspace loaded")
+            return
+
+        origin_name = tk.simpledialog.askstring("Compare Algorithms", "Enter origin node name:")
+        if not origin_name:
+            return
+
+        destination_name = tk.simpledialog.askstring("Compare Algorithms", "Enter destination node name:")
+        if not destination_name:
+            return
+
+        # Time A* algorithm
+        import time
+        start_time = time.time()
+        path_astar = FindShortestPathInAirspace(self.current_airspace, origin_name, destination_name)
+        astar_time = time.time() - start_time
+
+        # Time Dijkstra algorithm
+        start_time = time.time()
+        path_dijkstra = self.dijkstra_shortest_path(origin_name, destination_name)
+        dijkstra_time = time.time() - start_time
+
+        if path_astar and path_dijkstra:
+            message = f"A* Algorithm:\n"
+            message += f"  Time: {astar_time:.6f} seconds\n"
+            message += f"  Path cost: {path_astar.cost:.2f} km\n"
+            message += f"  Path: {' -> '.join([n.name for n in path_astar.nodes])}\n\n"
+
+            message += f"Dijkstra Algorithm:\n"
+            message += f"  Time: {dijkstra_time:.6f} seconds\n"
+            message += f"  Path cost: {path_dijkstra.cost:.2f} km\n"
+            message += f"  Path: {' -> '.join([n.name for n in path_dijkstra.nodes])}\n\n"
+
+            if path_astar.cost == path_dijkstra.cost:
+                message += "Both algorithms found the same optimal path."
+            else:
+                message += "Warning: Algorithms found different paths!"
+
+            messagebox.showinfo("Algorithm Comparison", message)
+        else:
+            messagebox.showinfo("Algorithm Comparison", "No path exists between these nodes")
+
+    def dijkstra_shortest_path(self, origin_name, destination_name):
+        origin = self.current_airspace.find_navpoint_by_name(origin_name)
+        destination = self.current_airspace.find_navpoint_by_name(destination_name)
+
+        if not origin or not destination:
+            return None
+
+        import heapq
+
+        # Priority queue: (total_cost, current_node, path)
+        heap = []
+        heapq.heappush(heap, (0, origin, [origin]))
+
+        visited = set()
+
+        while heap:
+            current_cost, current_node, current_path = heapq.heappop(heap)
+
+            if current_node == destination:
+                return Path(current_path, current_cost)
+
+            if current_node in visited:
+                continue
+            visited.add(current_node)
+
+            for neighbor in current_node.neighbors:
+                if neighbor not in visited:
+                    # Find the segment between current_node and neighbor
+                    segment = None
+                    for seg in self.current_airspace.nav_segments:
+                        if (seg.origin_number == current_node.number and
+                                seg.destination_number == neighbor.number):
+                            segment = seg
+                            break
+
+                    if segment:
+                        new_cost = current_cost + segment.distance
+                        new_path = current_path.copy()
+                        new_path.append(neighbor)
+                        heapq.heappush(heap, (new_cost, neighbor, new_path))
+
+        return None
+
+    def add_restrictions_dialog(self):
+        if not self.current_airspace:
+            messagebox.showwarning("Warning", "No airspace loaded")
+            return
+
+        restriction_type = tk.simpledialog.askstring("Add Restrictions",
+                                                     "Add restriction for:\n1. Node by name\n2. Node by number\n3. Segment by names\n4. Segment by numbers\nEnter choice (1-4):")
+
+        if not restriction_type:
+            return
+
+        if restriction_type == "1":
+            node_name = tk.simpledialog.askstring("Add Restrictions", "Enter node name to restrict:")
+            if node_name:
+                self.restricted_nodes.add(node_name)
+                messagebox.showinfo("Success", f"Node {node_name} restricted")
+        elif restriction_type == "2":
+            node_number = tk.simpledialog.askstring("Add Restrictions", "Enter node number to restrict:")
+            if node_number:
+                try:
+                    node_num = int(node_number)
+                    self.restricted_nodes.add(node_num)
+                    messagebox.showinfo("Success", f"Node {node_num} restricted")
+                except ValueError:
+                    messagebox.showerror("Error", "Node number must be an integer")
+        elif restriction_type == "3":
+            segment_names = tk.simpledialog.askstring("Add Restrictions",
+                                                      "Enter segment to restrict (format: origin-destination):")
+            if segment_names:
+                # Validar formato
+                if '-' in segment_names and len(segment_names.split('-')) == 2:
+                    self.restricted_segments.add(segment_names)
+                    messagebox.showinfo("Success", f"Segment {segment_names} restricted")
+                else:
+                    messagebox.showerror("Error", "Invalid format. Use 'origin-destination'")
+        elif restriction_type == "4":
+            segment_numbers = tk.simpledialog.askstring("Add Restrictions",
+                                                        "Enter segment to restrict (format: originNumber-destinationNumber):")
+            if segment_numbers:
+                # Validar formato
+                if '-' in segment_numbers and len(segment_numbers.split('-')) == 2:
+                    try:
+                        orig, dest = segment_numbers.split('-')
+                        orig_num = int(orig.strip())
+                        dest_num = int(dest.strip())
+                        self.restricted_segments.add(f"{orig_num}-{dest_num}")
+                        messagebox.showinfo("Success", f"Segment {orig_num}-{dest_num} restricted")
+                    except ValueError:
+                        messagebox.showerror("Error", "Segment numbers must be integers")
+                else:
+                    messagebox.showerror("Error", "Invalid format. Use 'originNumber-destinationNumber'")
+        else:
+            messagebox.showerror("Error", "Invalid choice. Enter a number between 1-4")
+
+
+
 
 
 
