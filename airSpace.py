@@ -21,11 +21,10 @@ class AirSpace:
                 return point
         return None
 
-    def find_airport_by_name(self, name):
-        for airport in self.nav_airports:
-            if airport.name == name:
-                return airport
-        return None
+    def __repr__(self):
+        return f"AirSpace({len(self.nav_points)} points, {len(self.nav_segments)} segments, {len(self.nav_airports)} airports)"
+
+
 
 
 def LoadAirspaceFromFiles(airspace, nav_file, seg_file, aer_file):
