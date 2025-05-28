@@ -529,7 +529,15 @@ class GraphApp:
             messagebox.showerror("Error", "Failed to add segment")
 
     def delete_node_dialog(self):
-        if not self.current_graph or not self.current_graph.nodes:
+        # Si no hi ha graf actual però sí espai aeri, el convertim
+        if not self.current_graph:
+            if self.current_airspace:
+                self.convert_airspace_to_graph()
+            else:
+                messagebox.showwarning("Warning", "No nodes in graph")
+                return
+
+        if not self.current_graph.nodes:
             messagebox.showwarning("Warning", "No nodes in graph")
             return
 
@@ -537,7 +545,7 @@ class GraphApp:
         if not node_name:
             return
 
-        # Buscar y eliminar el nodo
+        # Buscar i eliminar el node
         node_to_delete = None
         for node in self.current_graph.nodes:
             if node.name == node_name:
@@ -548,18 +556,16 @@ class GraphApp:
             messagebox.showerror("Error", f"Node '{node_name}' not found")
             return
 
-        # Eliminar segmentos relacionados
-        segments_to_keep = []
-        for seg in self.current_graph.segments:
-            if seg.origin != node_to_delete and seg.destination != node_to_delete:
-                segments_to_keep.append(seg)
+        # Eliminar segments relacionats
+        self.current_graph.segments = [
+            seg for seg in self.current_graph.segments
+            if seg.origin != node_to_delete and seg.destination != node_to_delete
+        ]
 
-        self.current_graph.segments = segments_to_keep
-
-        # Eliminar el nodo
+        # Eliminar el node
         self.current_graph.nodes.remove(node_to_delete)
 
-        # Actualizar listas de vecinos en otros nodos
+        # Treure'l dels veïns
         for node in self.current_graph.nodes:
             if node_to_delete in node.neighbors:
                 node.neighbors.remove(node_to_delete)
