@@ -11,9 +11,6 @@ from node import Distance
 import os
 import platform
 import subprocess
-import time
-import random
-
 
 def obrir_google_earth(kml_path):
     try:
@@ -86,12 +83,7 @@ class GraphApp:
                   command=self.add_restrictions_dialog).pack(fill=tk.X, pady=2)
         tk.Button(self.control_frame, text="Compare Algorithms",
                   command=self.compare_algorithms).pack(fill=tk.X, pady=2)
-        tk.Button(self.control_frame, text="Open image", command=self.open_specific_image).pack(fill=tk.X, pady=2)
-        tk.Button(self.control_frame, text="Party mode 🎉", command=self.modo_festa).pack(fill=tk.X, pady=2)
-        tk.Button(self.control_frame, text="Snake Path 🐍", command=self.run_snake_path_animation).pack(fill=tk.X,
-                                                                                                       pady=2)
-        tk.Button(self.control_frame, text="Snake Path (Airspace) 🐍", command=self.run_airspace_snake_path).pack(
-            fill=tk.X, pady=2)
+
 
 
 
@@ -104,8 +96,6 @@ class GraphApp:
         self.clear_graph_display()
 
         self.add_version4_features()
-
-        self.zoom_frame = None  # Contenidor per als botons de zoom
 
     def add_version4_features(self):
         # Menú superior
@@ -139,8 +129,7 @@ class GraphApp:
         self.current_airspace = AirSpace()
         try:
             LoadAirspaceFromFiles(self.current_airspace, "Cat_nav.txt", "Cat_seg.txt", "Cat_aer.txt")
-            self.plot_airspace("Catalunya Airspace (Barcelona FIR)")
-
+            self.plot_airspace()
             messagebox.showinfo("Success", "Catalunya airspace loaded successfully")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load airspace: {str(e)}")
@@ -155,8 +144,7 @@ class GraphApp:
                     raise FileNotFoundError(f"El archivo {file} no se encuentra en el directorio actual")
 
             LoadAirspaceFromFiles(self.current_airspace, "Eur_nav.txt", "Eur_seg.txt", "Eur_aer.txt")
-            self.plot_airspace("European Airspace")
-
+            self.plot_airspace()
             messagebox.showinfo("Success", "Europe airspace loaded successfully")
         except FileNotFoundError as e:
             messagebox.showerror("Error",
@@ -177,8 +165,7 @@ class GraphApp:
                     raise FileNotFoundError(f"El archivo {file} no se encuentra en el directorio actual")
 
             LoadAirspaceFromFiles(self.current_airspace, "Esp_nav.txt", "Esp_seg.txt", "Esp_aer.txt")
-            self.plot_airspace("Spain Airspace (Madrid FIR)")
-
+            self.plot_airspace()
             messagebox.showinfo("Success", "Spain airspace loaded successfully")
         except FileNotFoundError as e:
             messagebox.showerror("Error",
@@ -198,7 +185,7 @@ class GraphApp:
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load airspace: {str(e)}")
 
-    def plot_airspace(self, title="Airspace"):
+    def plot_airspace(self):
         if not self.current_airspace:
             return
 
@@ -267,8 +254,10 @@ class GraphApp:
 
         # Ajustes finales
         self.ax.grid(True, linestyle=':', color='gray', alpha=0.4)
-        self.ax.set_title(title, fontsize=12, pad=15, fontweight='bold')
-
+        self.ax.set_title("Catalunya Airspace (Barcelona FIR)",
+                          fontsize=12,
+                          pad=15,
+                          fontweight='bold')
 
         # Configurar eventos para zoom y selección
         self.setup_interaction()
@@ -1099,159 +1088,6 @@ class GraphApp:
                         heapq.heappush(heap, (new_cost, neighbor, new_path))
 
         return None
-    def open_specific_image(self):
-        image_path = os.path.join(os.path.dirname(__file__), "img", "foto.jpg")
-
-        if os.path.exists(image_path):
-            try:
-                if platform.system() == 'Windows':
-                    os.startfile(image_path)
-                elif platform.system() == 'Darwin':  # macOS
-                    subprocess.call(['open', image_path])
-                elif platform.system() == 'Linux':
-                    subprocess.call(['xdg-open', image_path])
-            except Exception as e:
-                messagebox.showerror("Error", f"No s'ha pogut obrir la imatge: {e}")
-        else:
-            messagebox.showerror("Error", f"No s'ha trobat la imatge: {image_path}")
-
-    def modo_festa(self):
-        if not self.current_graph:
-            messagebox.showwarning("Avis", "No hi ha graf carregat")
-            return
-
-        colors = ['#FF69B4', '#00FFFF', '#ADFF2F', '#FFA500', '#9370DB', '#FF4500', '#00FF00']
-        self.ax.clear()
-
-        for seg in self.current_graph.segments:
-            self.ax.plot([seg.origin.x, seg.destination.x],
-                         [seg.origin.y, seg.destination.y],
-                         color=random.choice(colors), linewidth=2)
-
-        for node in self.current_graph.nodes:
-            self.ax.plot(node.x, node.y, 'o', markersize=12, color=random.choice(colors))
-            self.ax.text(node.x, node.y, node.name,
-                         fontsize=10, ha='center', va='center', color='black', fontweight='bold')
-
-        self.ax.set_title("PARTY MODE ON", fontsize=14, color=random.choice(colors))
-        self.canvas.draw()
-
-    def animate_shortest_path(self, path):
-        if not path or len(path.nodes) < 2:
-            messagebox.showinfo("Info", "No path to animate.")
-            return
-
-        self.ax.clear()
-
-        # Draw the full graph in the background (gray)
-        for seg in self.current_graph.segments:
-            self.ax.plot([seg.origin.x, seg.destination.x],
-                         [seg.origin.y, seg.destination.y],
-                         'gray', linewidth=1, alpha=0.3)
-
-        # Draw all nodes
-        for node in self.current_graph.nodes:
-            self.ax.plot(node.x, node.y, 'o', markersize=8, color='gray')
-            self.ax.text(node.x, node.y, node.name,
-                         fontsize=8, ha='center', va='center', color='black')
-
-        self.canvas.draw()
-
-        # Animate each segment of the path like a "snake"
-        for i in range(len(path.nodes) - 1):
-            origin = path.nodes[i]
-            destination = path.nodes[i + 1]
-
-            self.ax.plot([origin.x, destination.x],
-                         [origin.y, destination.y],
-                         'lime', linewidth=3)
-
-            self.ax.plot(origin.x, origin.y, 'o', color='blue', markersize=10)
-            self.ax.plot(destination.x, destination.y, 'o', color='red', markersize=10)
-
-            self.canvas.draw()
-            self.root.update()
-            time.sleep(0.5)  # pause between steps
-
-        self.ax.set_title("🐍 Snake Path Animation", fontsize=12)
-        self.canvas.draw()
-
-    def run_snake_path_animation(self):
-        if not self.current_graph or len(self.current_graph.nodes) < 2:
-            messagebox.showwarning("Warning", "No graph loaded or not enough nodes.")
-            return
-
-        origin = tk.simpledialog.askstring("Snake Path", "Enter origin node name:")
-        if not origin:
-            return
-        destination = tk.simpledialog.askstring("Snake Path", "Enter destination node name:")
-        if not destination:
-            return
-
-        path = FindShortestPath(self.current_graph, origin, destination)
-        if path:
-            self.animate_shortest_path(path)
-        else:
-            messagebox.showinfo("Path", "No path exists between the selected nodes.")
-
-    def animate_airspace_path(self, path):
-        if not path or len(path.nodes) < 2:
-            messagebox.showinfo("Info", "No path to animate.")
-            return
-
-        self.ax.clear()
-
-        # Draw all points and segments in gray
-        for seg in self.current_airspace.nav_segments:
-            origin = self.current_airspace.find_navpoint_by_number(seg.origin_number)
-            destination = self.current_airspace.find_navpoint_by_number(seg.destination_number)
-            if origin and destination:
-                self.ax.plot([origin.longitude, destination.longitude],
-                             [origin.latitude, destination.latitude],
-                             'gray', linewidth=0.5, alpha=0.3)
-
-        for point in self.current_airspace.nav_points:
-            self.ax.plot(point.longitude, point.latitude, 'o', markersize=3, color='gray', alpha=0.5)
-
-        self.canvas.draw()
-
-        # Animate each segment
-        for i in range(len(path.nodes) - 1):
-            origin = path.nodes[i]
-            destination = path.nodes[i + 1]
-
-            self.ax.plot([origin.longitude, destination.longitude],
-                         [origin.latitude, destination.latitude],
-                         'lime', linewidth=2)
-
-            self.ax.plot(origin.longitude, origin.latitude, 'o', color='blue', markersize=8)
-            self.ax.plot(destination.longitude, destination.latitude, 'o', color='red', markersize=8)
-
-            self.canvas.draw()
-            self.root.update()
-            time.sleep(0.4)
-
-        self.ax.set_title("🐍 Snake Path Animation (Airspace)", fontsize=12)
-        self.canvas.draw()
-
-    def run_airspace_snake_path(self):
-        if not self.current_airspace:
-            messagebox.showwarning("Warning", "No airspace loaded.")
-            return
-
-        origin = tk.simpledialog.askstring("Snake Path", "Enter origin navpoint name:")
-        if not origin:
-            return
-        destination = tk.simpledialog.askstring("Snake Path", "Enter destination navpoint name:")
-        if not destination:
-            return
-
-        path = FindShortestPathInAirspace(self.current_airspace, origin, destination)
-        if path:
-            self.animate_airspace_path(path)
-        else:
-            messagebox.showinfo("Path", "No path found between the selected navpoints.")
-
 
     def add_restrictions_dialog(self):
         if not self.current_airspace:
@@ -1307,26 +1143,9 @@ class GraphApp:
         else:
             messagebox.showerror("Error", "Invalid choice. Enter a number between 1-4")
 
-    def setup_interaction(self):
-        # Conectar eventos
-        self.canvas.mpl_connect('scroll_event', self.on_scroll)
-        self.canvas.mpl_connect('pick_event', self.on_pick)
 
-        # Eliminar zoom_frame antic si existeix
-        if self.zoom_frame is not None:
-            self.zoom_frame.destroy()
 
-        # Crear nou zoom_frame
-        self.zoom_frame = tk.Frame(self.control_frame)
-        self.zoom_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=5)
 
-        tk.Button(self.zoom_frame, text="Zoom In", command=lambda: self.zoom(1.2)).pack(side=tk.LEFT, expand=True)
-        tk.Button(self.zoom_frame, text="Zoom Out", command=lambda: self.zoom(0.8)).pack(side=tk.LEFT, expand=True)
-        tk.Button(self.zoom_frame, text="Reset View", command=self.reset_view).pack(side=tk.LEFT, expand=True)
-
-        # Guardar límits inicials
-        self.initial_xlim = self.ax.get_xlim()
-        self.initial_ylim = self.ax.get_ylim()
 
 
 def show_shortest_path(self):
