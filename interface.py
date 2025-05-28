@@ -11,6 +11,9 @@ from node import Distance
 import os
 import platform
 import subprocess
+import time
+import random
+
 
 def obrir_google_earth(kml_path):
     try:
@@ -68,6 +71,8 @@ class GraphApp:
                   command=self.save_graph_to_file).pack(fill=tk.X, pady=2)
         tk.Button(self.control_frame, text="Find Shortest Path",
                   command=self.show_shortest_path).pack(fill=tk.X, pady=2)
+        tk.Button(self.control_frame, text="Show Reachable Nodes",
+                  command=self.show_reachable_nodes).pack(fill=tk.X, pady=2)
         tk.Button(self.control_frame, text="Load Catalunya Airspace",
                   command=self.load_catalunya_airspace).pack(fill=tk.X, pady=2)
         tk.Button(self.control_frame, text="Load Spain Airspace",
@@ -83,7 +88,12 @@ class GraphApp:
                   command=self.add_restrictions_dialog).pack(fill=tk.X, pady=2)
         tk.Button(self.control_frame, text="Compare Algorithms",
                   command=self.compare_algorithms).pack(fill=tk.X, pady=2)
-
+        tk.Button(self.control_frame, text="Open image", command=self.open_specific_image).pack(fill=tk.X, pady=2)
+        tk.Button(self.control_frame, text="Party mode 🎉", command=self.modo_festa).pack(fill=tk.X, pady=2)
+        tk.Button(self.control_frame, text="Snake Path 🐍", command=self.run_snake_path_animation).pack(fill=tk.X,
+                                                                                                       pady=2)
+        tk.Button(self.control_frame, text="Snake Path (Airspace) 🐍", command=self.run_airspace_snake_path).pack(
+            fill=tk.X, pady=2)
 
 
 
@@ -96,6 +106,8 @@ class GraphApp:
         self.clear_graph_display()
 
         self.add_version4_features()
+
+        self.zoom_frame = None  # Contenidor per als botons de zoom
 
     def add_version4_features(self):
         # Menú superior
@@ -129,7 +141,8 @@ class GraphApp:
         self.current_airspace = AirSpace()
         try:
             LoadAirspaceFromFiles(self.current_airspace, "Cat_nav.txt", "Cat_seg.txt", "Cat_aer.txt")
-            self.plot_airspace()
+            self.plot_airspace("Catalunya Airspace (Barcelona FIR)")
+
             messagebox.showinfo("Success", "Catalunya airspace loaded successfully")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load airspace: {str(e)}")
@@ -144,7 +157,8 @@ class GraphApp:
                     raise FileNotFoundError(f"El archivo {file} no se encuentra en el directorio actual")
 
             LoadAirspaceFromFiles(self.current_airspace, "Eur_nav.txt", "Eur_seg.txt", "Eur_aer.txt")
-            self.plot_airspace()
+            self.plot_airspace("European Airspace")
+
             messagebox.showinfo("Success", "Europe airspace loaded successfully")
         except FileNotFoundError as e:
             messagebox.showerror("Error",
@@ -165,7 +179,8 @@ class GraphApp:
                     raise FileNotFoundError(f"El archivo {file} no se encuentra en el directorio actual")
 
             LoadAirspaceFromFiles(self.current_airspace, "Esp_nav.txt", "Esp_seg.txt", "Esp_aer.txt")
-            self.plot_airspace()
+            self.plot_airspace("Spain Airspace (Madrid FIR)")
+
             messagebox.showinfo("Success", "Spain airspace loaded successfully")
         except FileNotFoundError as e:
             messagebox.showerror("Error",
@@ -185,7 +200,7 @@ class GraphApp:
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load airspace: {str(e)}")
 
-    def plot_airspace(self):
+    def plot_airspace(self, title="Airspace"):
         if not self.current_airspace:
             return
 
@@ -254,10 +269,8 @@ class GraphApp:
 
         # Ajustes finales
         self.ax.grid(True, linestyle=':', color='gray', alpha=0.4)
-        self.ax.set_title("Catalunya Airspace (Barcelona FIR)",
-                          fontsize=12,
-                          pad=15,
-                          fontweight='bold')
+        self.ax.set_title(title, fontsize=12, pad=15, fontweight='bold')
+
 
         # Configurar eventos para zoom y selección
         self.setup_interaction()
@@ -366,6 +379,219 @@ class GraphApp:
             else:
                 messagebox.showerror("Error", "Failed to load graph from file")
 
+    def show_reachable_nodes(self):
+        """Muestra los nodos alcanzables desde un nodo seleccionado"""
+        if self.current_airspace:
+            self.show_airspace_reachable_nodes()
+        elif self.current_graph:
+            self.show_graph_reachable_nodes()
+        else:
+            messagebox.showwarning("Warning", "No graph or airspace loaded")
+
+    def show_graph_reachable_nodes(self):
+        """Muestra nodos alcanzables en un grafo normal"""
+        if not self.current_graph or not self.current_graph.nodes:
+            messagebox.showwarning("Warning", "No nodes in graph")
+            return
+
+        node_name = tk.simpledialog.askstring("Reachable Nodes", "Enter starting node name:")
+        if not node_name:
+            return
+
+        # Buscar el nodo de inicio
+        start_node = None
+        for node in self.current_graph.nodes:
+            if node.name == node_name:
+                start_node = node
+                break
+
+        if not start_node:
+            messagebox.showerror("Error", f"Node '{node_name}' not found")
+            return
+
+        # Encontrar todos los nodos alcanzables
+        reachable_nodes = self.find_reachable_nodes_in_graph(start_node)
+
+        if not reachable_nodes:
+            messagebox.showinfo("Reachable Nodes", f"No reachable nodes from {node_name}")
+            return
+
+        # Mostrar resultados
+        self.plot_reachable_nodes_in_graph(start_node, reachable_nodes)
+        messagebox.showinfo("Reachable Nodes",
+                            f"From {node_name} you can reach {len(reachable_nodes)} nodes:\n" +
+                            ", ".join([n.name for n in reachable_nodes]))
+
+    def find_reachable_nodes_in_graph(self, start_node):
+        """Encuentra todos los nodos alcanzables desde start_node usando BFS"""
+        visited = set()
+        queue = [start_node]
+        reachable = []
+
+        while queue:
+            current_node = queue.pop(0)
+            if current_node in visited:
+                continue
+
+            visited.add(current_node)
+            if current_node != start_node:  # No incluir el nodo inicial en los alcanzables
+                reachable.append(current_node)
+
+            for neighbor in current_node.neighbors:
+                if neighbor not in visited:
+                    queue.append(neighbor)
+
+        return reachable
+
+    def plot_reachable_nodes_in_graph(self, start_node, reachable_nodes):
+        """Visualiza los nodos alcanzables en el grafo"""
+        self.ax.clear()
+
+        # Configuración del gráfico
+        self.ax.set_facecolor('#F5F5F5')
+        self.figure.patch.set_facecolor('white')
+
+        # Dibujar todos los segmentos primero (en gris claro)
+        for seg in self.current_graph.segments:
+            self.ax.plot([seg.origin.x, seg.destination.x],
+                         [seg.origin.y, seg.destination.y],
+                         color='#CCCCCC', linewidth=1, alpha=0.5)
+
+        # Resaltar segmentos que llevan a nodos alcanzables
+        for node in reachable_nodes:
+            for neighbor in node.neighbors:
+                if neighbor in reachable_nodes or neighbor == start_node:
+                    self.ax.plot([node.x, neighbor.x],
+                                 [node.y, neighbor.y],
+                                 color='#4682B4', linewidth=1.5, alpha=0.7)
+
+        # Dibujar nodos no alcanzables (en gris)
+        for node in self.current_graph.nodes:
+            if node not in reachable_nodes and node != start_node:
+                self.ax.plot(node.x, node.y, 'o', markersize=8,
+                             markerfacecolor='#DDDDDD', markeredgecolor='#999999')
+
+        # Dibujar nodos alcanzables (en verde)
+        for node in reachable_nodes:
+            self.ax.plot(node.x, node.y, 'o', markersize=10,
+                         markerfacecolor='#32CD32', markeredgecolor='#006400')
+            self.ax.text(node.x, node.y, node.name,
+                         fontsize=9, ha='center', va='center', color='white')
+
+        # Dibujar nodo inicial (en azul)
+        self.ax.plot(start_node.x, start_node.y, 'o', markersize=12,
+                     markerfacecolor='#1E90FF', markeredgecolor='#000080')
+        self.ax.text(start_node.x, start_node.y, start_node.name,
+                     fontsize=10, ha='center', va='center', color='white', fontweight='bold')
+
+        self.ax.grid(True, linestyle='--', alpha=0.3)
+        self.ax.set_title(f"Nodes reachable from {start_node.name}", fontsize=12, pad=15)
+        self.canvas.draw()
+
+    def show_airspace_reachable_nodes(self):
+        """Muestra nodos alcanzables en el espacio aéreo"""
+        if not self.current_airspace or not self.current_airspace.nav_points:
+            messagebox.showwarning("Warning", "No airspace loaded")
+            return
+
+        node_name = tk.simpledialog.askstring("Reachable Nodes", "Enter starting node name:")
+        if not node_name:
+            return
+
+        # Buscar el nodo de inicio
+        start_node = self.current_airspace.find_navpoint_by_name(node_name)
+        if not start_node:
+            messagebox.showerror("Error", f"Node '{node_name}' not found in airspace")
+            return
+
+        # Encontrar todos los nodos alcanzables
+        reachable_nodes = self.find_reachable_nodes_in_airspace(start_node)
+
+        if not reachable_nodes:
+            messagebox.showinfo("Reachable Nodes", f"No reachable nodes from {node_name}")
+            return
+
+        # Mostrar resultados
+        self.plot_reachable_nodes_in_airspace(start_node, reachable_nodes)
+        messagebox.showinfo("Reachable Nodes",
+                            f"From {node_name} you can reach {len(reachable_nodes)} nodes:\n" +
+                            ", ".join([n.name for n in reachable_nodes]))
+
+    def find_reachable_nodes_in_airspace(self, start_node):
+        """Encuentra todos los nodos alcanzables desde start_node en el espacio aéreo usando BFS"""
+        visited = set()
+        queue = [start_node]
+        reachable = []
+
+        while queue:
+            current_node = queue.pop(0)
+            if current_node in visited:
+                continue
+
+            visited.add(current_node)
+            if current_node != start_node:  # No incluir el nodo inicial en los alcanzables
+                reachable.append(current_node)
+
+            for neighbor in current_node.neighbors:
+                if neighbor not in visited:
+                    queue.append(neighbor)
+
+        return reachable
+
+    def plot_reachable_nodes_in_airspace(self, start_node, reachable_nodes):
+        """Visualiza los nodos alcanzables en el espacio aéreo"""
+        self.ax.clear()
+
+        # Configuración del gráfico
+        self.ax.set_facecolor('#F0F8FF')
+        self.figure.patch.set_facecolor('white')
+
+        # Dibujar todos los puntos y segmentos primero (en gris)
+        for point in self.current_airspace.nav_points:
+            self.ax.plot(point.longitude, point.latitude, 'o',
+                         markersize=3, color='gray', alpha=0.3)
+
+        for seg in self.current_airspace.nav_segments:
+            origin = self.current_airspace.find_navpoint_by_number(seg.origin_number)
+            destination = self.current_airspace.find_navpoint_by_number(seg.destination_number)
+            if origin and destination:
+                self.ax.plot([origin.longitude, destination.longitude],
+                             [origin.latitude, destination.latitude],
+                             'gray', linewidth=0.5, alpha=0.2)
+
+        # Resaltar segmentos que llevan a nodos alcanzables
+        for node in reachable_nodes:
+            for neighbor in node.neighbors:
+                if neighbor in reachable_nodes or neighbor == start_node:
+                    origin = node
+                    destination = neighbor
+                    self.ax.plot([origin.longitude, destination.longitude],
+                                 [origin.latitude, destination.latitude],
+                                 '#1E90FF', linewidth=1, alpha=0.7)
+
+        # Dibujar nodos alcanzables (en verde)
+        for node in reachable_nodes:
+            self.ax.plot(node.longitude, node.latitude, 'o',
+                         markersize=6, markerfacecolor='#32CD32',
+                         markeredgecolor='#006400')
+            self.ax.text(node.longitude, node.latitude, node.name,
+                         fontsize=8, ha='center', va='center',
+                         color='black', bbox=dict(facecolor='white', alpha=0.7))
+
+        # Dibujar nodo inicial (en azul)
+        self.ax.plot(start_node.longitude, start_node.latitude, 'o',
+                     markersize=10, markerfacecolor='#1E90FF',
+                     markeredgecolor='#000080')
+        self.ax.text(start_node.longitude, start_node.latitude, start_node.name,
+                     fontsize=10, ha='center', va='center',
+                     color='white', fontweight='bold',
+                     bbox=dict(facecolor='#1E90FF', alpha=0.8))
+
+        self.ax.grid(True, linestyle=':', color='gray', alpha=0.4)
+        self.ax.set_title(f"Nodes reachable from {start_node.name} in Airspace",
+                          fontsize=12, pad=15)
+        self.canvas.draw()
+
     def show_node_neighbors(self):
         if not self.current_graph:
             messagebox.showwarning("Warning", "No graph loaded")
@@ -470,28 +696,117 @@ class GraphApp:
         self.canvas.draw()
 
     def add_node_dialog(self):
-        if not self.current_graph:
-            messagebox.showwarning("Warning", "No graph loaded. Creating new graph.")
-            self.current_graph = Graph()
+        if not self.current_graph and not self.current_airspace:
+            messagebox.showwarning("Warning", "No graph or airspace loaded")
+            return
 
         name = tk.simpledialog.askstring("Add Node", "Enter node name:")
         if name:
             # Verificar si el nodo ya existe
-            for node in self.current_graph.nodes:
-                if node.name == name:
+            if self.current_graph:
+                for node in self.current_graph.nodes:
+                    if node.name == name:
+                        messagebox.showerror("Error", f"Node '{name}' already exists")
+                        return
+            elif self.current_airspace:
+                if self.current_airspace.find_navpoint_by_name(name):
                     messagebox.showerror("Error", f"Node '{name}' already exists")
                     return
 
-            x = tk.simpledialog.askfloat("Add Node", "Enter X coordinate:")
-            y = tk.simpledialog.askfloat("Add Node", "Enter Y coordinate:")
+            lon = tk.simpledialog.askfloat("Add Node", "Enter longitude coordinate:")
+            lat = tk.simpledialog.askfloat("Add Node", "Enter latitude coordinate:")
 
-            if x is not None and y is not None:
-                AddNode(self.current_graph, Node(name, x, y))
-                self.plot_current_graph()
+            if lon is not None and lat is not None:
+                if self.current_graph:
+                    AddNode(self.current_graph, Node(name, lon, lat))
+                    self.plot_current_graph()
+                elif self.current_airspace:
+                    # Crear un nuevo punto de navegación para el espacio aéreo
+                    new_number = max([p.number for p in self.current_airspace.nav_points], default=0) + 1
+                    new_point = NavPoint(new_number, name, lat, lon)
+                    self.current_airspace.nav_points.append(new_point)
+
+                    # Actualizar vecinos (inicialmente vacío)
+                    new_point.neighbors = []
+
+                    self.plot_airspace()
+                    messagebox.showinfo("Success", f"Node '{name}' added to airspace")
+
+    def delete_node_dialog(self):
+        if not self.current_graph and not self.current_airspace:
+            messagebox.showwarning("Warning", "No graph or airspace loaded")
+            return
+
+        node_name = tk.simpledialog.askstring("Delete Node", "Enter node name to delete:")
+        if not node_name:
+            return
+
+        if self.current_graph:
+            # Buscar y eliminar el nodo en el grafo normal
+            node_to_delete = None
+            for node in self.current_graph.nodes:
+                if node.name == node_name:
+                    node_to_delete = node
+                    break
+
+            if not node_to_delete:
+                messagebox.showerror("Error", f"Node '{node_name}' not found")
+                return
+
+            # Eliminar segmentos relacionados
+            segments_to_keep = []
+            for seg in self.current_graph.segments:
+                if seg.origin != node_to_delete and seg.destination != node_to_delete:
+                    segments_to_keep.append(seg)
+
+            self.current_graph.segments = segments_to_keep
+
+            # Eliminar el nodo
+            self.current_graph.nodes.remove(node_to_delete)
+
+            # Actualizar listas de vecinos en otros nodos
+            for node in self.current_graph.nodes:
+                if node_to_delete in node.neighbors:
+                    node.neighbors.remove(node_to_delete)
+
+            self.plot_current_graph()
+            messagebox.showinfo("Success", f"Node '{node_name}' and related segments deleted")
+
+        elif self.current_airspace:
+            # Buscar y eliminar el nodo en el espacio aéreo
+            node_to_delete = None
+            for i, point in enumerate(self.current_airspace.nav_points):
+                if point.name == node_name:
+                    node_to_delete = point
+                    break
+
+            if not node_to_delete:
+                messagebox.showerror("Error", f"Node '{node_name}' not found in airspace")
+                return
+
+            # Eliminar segmentos relacionados
+            segments_to_keep = []
+            for seg in self.current_airspace.nav_segments:
+                if seg.origin_number != node_to_delete.number and seg.destination_number != node_to_delete.number:
+                    segments_to_keep.append(seg)
+
+            self.current_airspace.nav_segments = segments_to_keep
+
+            # Eliminar el nodo
+            self.current_airspace.nav_points.remove(node_to_delete)
+
+            # Actualizar listas de vecinos en otros nodos
+            for point in self.current_airspace.nav_points:
+                if node_to_delete in point.neighbors:
+                    point.neighbors.remove(node_to_delete)
+
+            self.plot_airspace()
+            messagebox.showinfo("Success", f"Node '{node_name}' and related segments deleted from airspace")
 
     def add_segment_dialog(self):
-        if not self.current_graph or len(self.current_graph.nodes) < 2:
-            messagebox.showwarning("Warning", "Not enough nodes in graph")
+        if (not self.current_graph or len(self.current_graph.nodes) < 2) and (
+                not self.current_airspace or len(self.current_airspace.nav_points) < 2):
+            messagebox.showwarning("Warning", "Not enough nodes in graph or airspace")
             return
 
         origin = tk.simpledialog.askstring("Add Segment", "Enter origin node name:")
@@ -502,58 +817,57 @@ class GraphApp:
         if not destination:
             return
 
-        # Verificar que los nodos existen
-        origin_exists = any(node.name == origin for node in self.current_graph.nodes)
-        destination_exists = any(node.name == destination for node in self.current_graph.nodes)
+        if self.current_graph:
+            # Código existente para grafos normales
+            origin_exists = any(node.name == origin for node in self.current_graph.nodes)
+            destination_exists = any(node.name == destination for node in self.current_graph.nodes)
 
-        if not origin_exists or not destination_exists:
-            messagebox.showerror("Error", "One or both nodes not found in graph")
-            return
+            if not origin_exists or not destination_exists:
+                messagebox.showerror("Error", "One or both nodes not found in graph")
+                return
 
-        segment_name = f"{origin}{destination}"
-        if AddSegment(self.current_graph, segment_name, origin, destination):
-            self.plot_current_graph()
-        else:
-            messagebox.showerror("Error", "Failed to add segment")
+            segment_name = f"{origin}{destination}"
+            if AddSegment(self.current_graph, segment_name, origin, destination):
+                self.plot_current_graph()
+            else:
+                messagebox.showerror("Error", "Failed to add segment")
 
-    def delete_node_dialog(self):
-        if not self.current_graph or not self.current_graph.nodes:
-            messagebox.showwarning("Warning", "No nodes in graph")
-            return
+        elif self.current_airspace:
+            # Verificar que los nodos existen
+            origin_point = self.current_airspace.find_navpoint_by_name(origin)
+            destination_point = self.current_airspace.find_navpoint_by_name(destination)
 
-        node_name = tk.simpledialog.askstring("Delete Node", "Enter node name to delete:")
-        if not node_name:
-            return
+            if not origin_point or not destination_point:
+                messagebox.showerror("Error", "One or both nodes not found in airspace")
+                return
 
-        # Buscar y eliminar el nodo
-        node_to_delete = None
-        for node in self.current_graph.nodes:
-            if node.name == node_name:
-                node_to_delete = node
-                break
+            # Verificar si el segmento ya existe en cualquier dirección
+            for seg in self.current_airspace.nav_segments:
+                if (seg.origin_number == origin_point.number and seg.destination_number == destination_point.number) or \
+                        (
+                                seg.origin_number == destination_point.number and seg.destination_number == origin_point.number):
+                    messagebox.showerror("Error", "Segment already exists (in one direction)")
+                    return
 
-        if not node_to_delete:
-            messagebox.showerror("Error", f"Node '{node_name}' not found")
-            return
+            # Crear nuevo segmento (en ambas direcciones para espacio aéreo)
+            distance = HaversineDistance(origin_point, destination_point)
 
-        # Eliminar segmentos relacionados
-        segments_to_keep = []
-        for seg in self.current_graph.segments:
-            if seg.origin != node_to_delete and seg.destination != node_to_delete:
-                segments_to_keep.append(seg)
+            # Segmento origen -> destino
+            new_segment = NavSegment(origin_point.number, destination_point.number, distance)
+            self.current_airspace.nav_segments.append(new_segment)
 
-        self.current_graph.segments = segments_to_keep
+            # Segmento destino -> origen (para espacio aéreo bidireccional)
+            reverse_segment = NavSegment(destination_point.number, origin_point.number, distance)
+            self.current_airspace.nav_segments.append(reverse_segment)
 
-        # Eliminar el nodo
-        self.current_graph.nodes.remove(node_to_delete)
+            # Actualizar vecinos en ambos sentidos
+            if destination_point not in origin_point.neighbors:
+                origin_point.neighbors.append(destination_point)
+            if origin_point not in destination_point.neighbors:
+                destination_point.neighbors.append(origin_point)
 
-        # Actualizar listas de vecinos en otros nodos
-        for node in self.current_graph.nodes:
-            if node_to_delete in node.neighbors:
-                node.neighbors.remove(node_to_delete)
-
-        self.plot_current_graph()
-        messagebox.showinfo("Success", f"Node '{node_name}' and related segments deleted")
+            self.plot_airspace()
+            messagebox.showinfo("Success", f"Segment between {origin} and {destination} added (both directions)")
 
     def create_new_graph(self):
         self.current_graph = Graph()
@@ -1088,6 +1402,159 @@ class GraphApp:
                         heapq.heappush(heap, (new_cost, neighbor, new_path))
 
         return None
+    def open_specific_image(self):
+        image_path = os.path.join(os.path.dirname(__file__), "img", "foto.jpg")
+
+        if os.path.exists(image_path):
+            try:
+                if platform.system() == 'Windows':
+                    os.startfile(image_path)
+                elif platform.system() == 'Darwin':  # macOS
+                    subprocess.call(['open', image_path])
+                elif platform.system() == 'Linux':
+                    subprocess.call(['xdg-open', image_path])
+            except Exception as e:
+                messagebox.showerror("Error", f"No s'ha pogut obrir la imatge: {e}")
+        else:
+            messagebox.showerror("Error", f"No s'ha trobat la imatge: {image_path}")
+
+    def modo_festa(self):
+        if not self.current_graph:
+            messagebox.showwarning("Avis", "No hi ha graf carregat")
+            return
+
+        colors = ['#FF69B4', '#00FFFF', '#ADFF2F', '#FFA500', '#9370DB', '#FF4500', '#00FF00']
+        self.ax.clear()
+
+        for seg in self.current_graph.segments:
+            self.ax.plot([seg.origin.x, seg.destination.x],
+                         [seg.origin.y, seg.destination.y],
+                         color=random.choice(colors), linewidth=2)
+
+        for node in self.current_graph.nodes:
+            self.ax.plot(node.x, node.y, 'o', markersize=12, color=random.choice(colors))
+            self.ax.text(node.x, node.y, node.name,
+                         fontsize=10, ha='center', va='center', color='black', fontweight='bold')
+
+        self.ax.set_title("PARTY MODE ON", fontsize=14, color=random.choice(colors))
+        self.canvas.draw()
+
+    def animate_shortest_path(self, path):
+        if not path or len(path.nodes) < 2:
+            messagebox.showinfo("Info", "No path to animate.")
+            return
+
+        self.ax.clear()
+
+        # Draw the full graph in the background (gray)
+        for seg in self.current_graph.segments:
+            self.ax.plot([seg.origin.x, seg.destination.x],
+                         [seg.origin.y, seg.destination.y],
+                         'gray', linewidth=1, alpha=0.3)
+
+        # Draw all nodes
+        for node in self.current_graph.nodes:
+            self.ax.plot(node.x, node.y, 'o', markersize=8, color='gray')
+            self.ax.text(node.x, node.y, node.name,
+                         fontsize=8, ha='center', va='center', color='black')
+
+        self.canvas.draw()
+
+        # Animate each segment of the path like a "snake"
+        for i in range(len(path.nodes) - 1):
+            origin = path.nodes[i]
+            destination = path.nodes[i + 1]
+
+            self.ax.plot([origin.x, destination.x],
+                         [origin.y, destination.y],
+                         'lime', linewidth=3)
+
+            self.ax.plot(origin.x, origin.y, 'o', color='blue', markersize=10)
+            self.ax.plot(destination.x, destination.y, 'o', color='red', markersize=10)
+
+            self.canvas.draw()
+            self.root.update()
+            time.sleep(0.5)  # pause between steps
+
+        self.ax.set_title("🐍 Snake Path Animation", fontsize=12)
+        self.canvas.draw()
+
+    def run_snake_path_animation(self):
+        if not self.current_graph or len(self.current_graph.nodes) < 2:
+            messagebox.showwarning("Warning", "No graph loaded or not enough nodes.")
+            return
+
+        origin = tk.simpledialog.askstring("Snake Path", "Enter origin node name:")
+        if not origin:
+            return
+        destination = tk.simpledialog.askstring("Snake Path", "Enter destination node name:")
+        if not destination:
+            return
+
+        path = FindShortestPath(self.current_graph, origin, destination)
+        if path:
+            self.animate_shortest_path(path)
+        else:
+            messagebox.showinfo("Path", "No path exists between the selected nodes.")
+
+    def animate_airspace_path(self, path):
+        if not path or len(path.nodes) < 2:
+            messagebox.showinfo("Info", "No path to animate.")
+            return
+
+        self.ax.clear()
+
+        # Draw all points and segments in gray
+        for seg in self.current_airspace.nav_segments:
+            origin = self.current_airspace.find_navpoint_by_number(seg.origin_number)
+            destination = self.current_airspace.find_navpoint_by_number(seg.destination_number)
+            if origin and destination:
+                self.ax.plot([origin.longitude, destination.longitude],
+                             [origin.latitude, destination.latitude],
+                             'gray', linewidth=0.5, alpha=0.3)
+
+        for point in self.current_airspace.nav_points:
+            self.ax.plot(point.longitude, point.latitude, 'o', markersize=3, color='gray', alpha=0.5)
+
+        self.canvas.draw()
+
+        # Animate each segment
+        for i in range(len(path.nodes) - 1):
+            origin = path.nodes[i]
+            destination = path.nodes[i + 1]
+
+            self.ax.plot([origin.longitude, destination.longitude],
+                         [origin.latitude, destination.latitude],
+                         'lime', linewidth=2)
+
+            self.ax.plot(origin.longitude, origin.latitude, 'o', color='blue', markersize=8)
+            self.ax.plot(destination.longitude, destination.latitude, 'o', color='red', markersize=8)
+
+            self.canvas.draw()
+            self.root.update()
+            time.sleep(0.4)
+
+        self.ax.set_title("🐍 Snake Path Animation (Airspace)", fontsize=12)
+        self.canvas.draw()
+
+    def run_airspace_snake_path(self):
+        if not self.current_airspace:
+            messagebox.showwarning("Warning", "No airspace loaded.")
+            return
+
+        origin = tk.simpledialog.askstring("Snake Path", "Enter origin navpoint name:")
+        if not origin:
+            return
+        destination = tk.simpledialog.askstring("Snake Path", "Enter destination navpoint name:")
+        if not destination:
+            return
+
+        path = FindShortestPathInAirspace(self.current_airspace, origin, destination)
+        if path:
+            self.animate_airspace_path(path)
+        else:
+            messagebox.showinfo("Path", "No path found between the selected navpoints.")
+
 
     def add_restrictions_dialog(self):
         if not self.current_airspace:
@@ -1143,9 +1610,26 @@ class GraphApp:
         else:
             messagebox.showerror("Error", "Invalid choice. Enter a number between 1-4")
 
+    def setup_interaction(self):
+        # Conectar eventos
+        self.canvas.mpl_connect('scroll_event', self.on_scroll)
+        self.canvas.mpl_connect('pick_event', self.on_pick)
 
+        # Eliminar zoom_frame antic si existeix
+        if self.zoom_frame is not None:
+            self.zoom_frame.destroy()
 
+        # Crear nou zoom_frame
+        self.zoom_frame = tk.Frame(self.control_frame)
+        self.zoom_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=5)
 
+        tk.Button(self.zoom_frame, text="Zoom In", command=lambda: self.zoom(1.2)).pack(side=tk.LEFT, expand=True)
+        tk.Button(self.zoom_frame, text="Zoom Out", command=lambda: self.zoom(0.8)).pack(side=tk.LEFT, expand=True)
+        tk.Button(self.zoom_frame, text="Reset View", command=self.reset_view).pack(side=tk.LEFT, expand=True)
+
+        # Guardar límits inicials
+        self.initial_xlim = self.ax.get_xlim()
+        self.initial_ylim = self.ax.get_ylim()
 
 
 def show_shortest_path(self):
