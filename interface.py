@@ -4,15 +4,15 @@ from graph import *
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from airSpace import AirSpace, LoadAirspaceFromFiles
-from navPoint import HaversineDistance
-
+from navPoint import HaversineDistance, NavPoint
+from navSegment import NavSegment
 from node import Distance
-
 import os
 import platform
 import subprocess
 import time
 import random
+
 
 
 def obrir_google_earth(kml_path):
@@ -1403,7 +1403,7 @@ class GraphApp:
 
         return None
     def open_specific_image(self):
-        image_path = os.path.join(os.path.dirname(__file__), "img", "foto.jpg")
+        image_path = os.path.join(os.path.dirname(__file__), "img", "unnamed.jpg")
 
         if os.path.exists(image_path):
             try:
