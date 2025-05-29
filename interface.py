@@ -6,14 +6,13 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from airSpace import AirSpace, LoadAirspaceFromFiles
 from navPoint import HaversineDistance, NavPoint
 from navSegment import NavSegment
-
 from node import Distance
-
 import os
 import platform
 import subprocess
 import time
 import random
+
 
 
 def obrir_google_earth(kml_path):
@@ -80,6 +79,9 @@ class GraphApp:
                   command=self.load_spain_airspace).pack(fill=tk.X, pady=2)
         tk.Button(self.control_frame, text="Load Europe Airspace",
                   command=self.load_europe_airspace).pack(fill=tk.X, pady=2)
+        tk.Button(self.control_frame, text="Export Airports to Text",
+                  command=self.export_airports_to_text).pack(fill=tk.X, pady=2)
+
 
         tk.Button(self.control_frame, text="Generate KML for Airspace",
                   command=self.generate_airspace_kml).pack(fill=tk.X, pady=2)
@@ -121,6 +123,25 @@ class GraphApp:
         # Panel de estado
         self.status_bar = tk.Label(self.root, text="Versión 4 - Listo", bd=1, relief=tk.SUNKEN, anchor=tk.W)
         self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
+
+    def export_airports_to_text(self):
+        if not self.current_airspace or not self.current_airspace.nav_airports:
+            messagebox.showwarning("Warning", "No airspace loaded or no airports in current airspace")
+            return
+
+        filename = filedialog.asksaveasfilename(
+            title="Save Airports List",
+            defaultextension=".txt",
+            filetypes=(("Text files", "*.txt"), ("All files", "*.*")))
+
+        if filename:
+            try:
+                with open(filename, 'w') as f:
+                    for airport in self.current_airspace.nav_airports:
+                        f.write(f"{airport.name}\n")
+                messagebox.showinfo("Success", f"Airports list saved to {filename}")
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to save airports list: {str(e)}")
 
     def export_to_kml(self):
         if not self.current_graph:
@@ -379,6 +400,8 @@ class GraphApp:
                 self.plot_current_graph()
             else:
                 messagebox.showerror("Error", "Failed to load graph from file")
+
+
 
     def show_reachable_nodes(self):
         """Muestra los nodos alcanzables desde un nodo seleccionado"""
@@ -774,36 +797,63 @@ class GraphApp:
             messagebox.showinfo("Success", f"Node '{node_name}' and related segments deleted")
 
         elif self.current_airspace:
-            # Buscar y eliminar el nodo en el espacio aéreo
+            # Buscar y eliminar el nodo en el espacio aéreo (tanto en nav_points como en nav_airports)
             node_to_delete = None
+            airport_to_delete = None
+
+            # Buscar en puntos de navegación
             for i, point in enumerate(self.current_airspace.nav_points):
                 if point.name == node_name:
                     node_to_delete = point
                     break
 
-            if not node_to_delete:
+            # Buscar en aeropuertos
+            for i, airport in enumerate(self.current_airspace.nav_airports):
+                if airport.name == node_name:
+                    airport_to_delete = airport
+                    break
+
+            if not node_to_delete and not airport_to_delete:
                 messagebox.showerror("Error", f"Node '{node_name}' not found in airspace")
                 return
 
             # Eliminar segmentos relacionados
             segments_to_keep = []
             for seg in self.current_airspace.nav_segments:
-                if seg.origin_number != node_to_delete.number and seg.destination_number != node_to_delete.number:
+                if (node_to_delete and
+                        seg.origin_number != node_to_delete.number and
+                        seg.destination_number != node_to_delete.number):
                     segments_to_keep.append(seg)
+                elif airport_to_delete:
+                    # Para aeropuertos, necesitamos verificar los SIDs
+                    origin_point = self.current_airspace.find_navpoint_by_number(seg.origin_number)
+                    destination_point = self.current_airspace.find_navpoint_by_number(seg.destination_number)
+
+                    # Verificar si el segmento está conectado a algún SID del aeropuerto
+                    if (not (airport_to_delete.sids and
+                             (seg.origin_number in airport_to_delete.sids or
+                              seg.destination_number in airport_to_delete.sids))):
+                        segments_to_keep.append(seg)
 
             self.current_airspace.nav_segments = segments_to_keep
 
-            # Eliminar el nodo
-            self.current_airspace.nav_points.remove(node_to_delete)
+            # Eliminar el nodo o aeropuerto
+            if node_to_delete:
+                self.current_airspace.nav_points.remove(node_to_delete)
 
-            # Actualizar listas de vecinos en otros nodos
-            for point in self.current_airspace.nav_points:
-                if node_to_delete in point.neighbors:
-                    point.neighbors.remove(node_to_delete)
+                # Actualizar listas de vecinos en otros nodos
+                for point in self.current_airspace.nav_points:
+                    if node_to_delete in point.neighbors:
+                        point.neighbors.remove(node_to_delete)
+
+            if airport_to_delete:
+                self.current_airspace.nav_airports.remove(airport_to_delete)
+
+                # Eliminar referencias en otros aeropuertos si es necesario
+                # (dependiendo de cómo esté implementada la clase AirSpace)
 
             self.plot_airspace()
             messagebox.showinfo("Success", f"Node '{node_name}' and related segments deleted from airspace")
-
     def add_segment_dialog(self):
         if (not self.current_graph or len(self.current_graph.nodes) < 2) and (
                 not self.current_airspace or len(self.current_airspace.nav_points) < 2):
@@ -1404,7 +1454,7 @@ class GraphApp:
 
         return None
     def open_specific_image(self):
-        image_path = os.path.join(os.path.dirname(__file__), "img", "foto.jpg")
+        image_path = os.path.join(os.path.dirname(__file__), "img", "unnamed.jpg")
 
         if os.path.exists(image_path):
             try:
