@@ -6,6 +6,12 @@ class NavPoint:
         self.longitude = longitude
         self.neighbors = []
 
+    def add_neighbor(self, neighbor):
+        if neighbor not in self.neighbors:
+            self.neighbors.append(neighbor)
+            return True
+        return False
+
     def __repr__(self):
         return f"NavPoint({self.number}, '{self.name}', {self.latitude}, {self.longitude})"
 
